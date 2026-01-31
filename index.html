@@ -5,31 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Event Magic - UAE</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loader { border-top-color: #4f46e5; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
 </head>
-<body class="bg-slate-50 min-h-screen flex flex-col items-center p-4">
+<body class="bg-slate-50 min-h-screen flex flex-col items-center p-4 font-sans">
     <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 mt-10">
         <h1 class="text-3xl font-extrabold text-center text-indigo-600 mb-2">📸 Photo Magic</h1>
-        <p class="text-gray-500 text-center mb-8">AI-Powered Event Photos</p>
+        <p class="text-gray-500 text-center mb-8 italic text-sm">AI Face Finder • Dubai 2026</p>
 
         <div class="border-2 border-dashed border-indigo-100 rounded-xl p-6 mb-6 text-center">
             <h3 class="font-bold text-gray-700 mb-4">Host / Photographer</h3>
             <input type="file" id="photoInput" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 mb-4">
-            <button onclick="uploadPhotos()" id="uploadBtn" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition">Upload to Drive</button>
+            <button onclick="uploadPhotos()" id="uploadBtn" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition shadow-lg">Upload to Drive</button>
         </div>
 
         <div class="bg-indigo-50 rounded-xl p-6 text-center">
             <h3 class="font-bold text-gray-700 mb-4">Find My Photos</h3>
-            <button onclick="takeSelfie()" class="w-full bg-emerald-500 text-white font-bold py-3 rounded-lg hover:bg-emerald-600 transition">Take Selfie & Search</button>
+            <button onclick="takeSelfie()" id="searchBtn" class="w-full bg-emerald-500 text-white font-bold py-3 rounded-lg hover:bg-emerald-600 transition shadow-lg">Take Selfie & Search</button>
         </div>
 
-        <div id="status" class="mt-4 text-center text-sm font-medium text-indigo-500"></div>
-        <div id="gallery" class="grid grid-cols-2 gap-4 mt-8"></div>
+        <video id="video" class="hidden" autoplay playsinline></video>
+        <canvas id="canvas" class="hidden"></canvas>
+
+        <div id="status" class="mt-6 text-center text-sm font-medium text-indigo-500 min-h-[20px]"></div>
+        
+        <div id="gallery" class="grid grid-cols-2 gap-4 mt-8">
+            </div>
     </div>
 
     <script>
-        // Replace this with your URL from Phase 2
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhTIKaBQ7Pf4TQbcBh3rUq-1lg_JLm9cH7DmYA_Jh2njBFC/exec";
 
+        // --- UPLOAD LOGIC ---
         async function uploadPhotos() {
             const files = document.getElementById('photoInput').files;
             const status = document.getElementById('status');
@@ -38,23 +47,26 @@
             if (files.length === 0) return alert("Select photos first!");
 
             btn.disabled = true;
-            for (let file of files) {
-                status.innerText = `Uploading: ${file.name}...`;
-                const base64 = await toBase64(file);
+            btn.innerText = "Processing AI...";
+            
+            for (let i = 0; i < files.length; i++) {
+                status.innerText = `Indexing Photo ${i+1} of ${files.length}...`;
+                const base64 = await toBase64(files[i]);
                 
                 try {
                     await fetch(SCRIPT_URL, {
                         method: "POST",
                         body: JSON.stringify({
                             base64: base64.split(',')[1],
-                            mimeType: file.type,
-                            fileName: file.name
+                            mimeType: files[i].type,
+                            fileName: files[i].name
                         })
                     });
                 } catch (e) { console.error(e); }
             }
-            status.innerText = "✅ All photos uploaded successfully!";
+            status.innerText = "✅ Event photos indexed successfully!";
             btn.disabled = false;
+            btn.innerText = "Upload to Drive";
         }
 
         const toBase64 = file => new Promise((resolve, reject) => {
@@ -64,9 +76,60 @@
             reader.onerror = error => reject(error);
         });
 
-        function takeSelfie() {
-            alert("Selfie search feature: This will connect to your AI comparison script!");
-            // We will add the camera logic in the final polish step!
+        // --- SELFIE SEARCH LOGIC ---
+        async function takeSelfie() {
+            const status = document.getElementById('status');
+            const gallery = document.getElementById('gallery');
+            const btn = document.getElementById('searchBtn');
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+
+            gallery.innerHTML = "";
+            status.innerHTML = `<div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-8 w-8 mx-auto mb-2"></div> Looking for your face...`;
+            btn.disabled = true;
+
+            try {
+                // 1. Start Camera
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                video.srcObject = stream;
+                
+                // Wait for video to load
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+                
+                // 2. Capture Frame
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                
+                const selfieBase64 = canvas.toDataURL('image/jpeg').split(',')[1];
+
+                // 3. Turn off camera
+                stream.getTracks().forEach(track => track.stop());
+
+                // 4. Send to Apps Script Search
+                const searchUrl = `${SCRIPT_URL}?selfie=${encodeURIComponent(selfieBase64)}`;
+                const response = await fetch(searchUrl);
+                const results = await response.json();
+
+                // 5. Display Results
+                if (results.length > 0 && !results[0].includes("No face")) {
+                    status.innerText = `Found ${results.length} photos of you! ✨`;
+                    results.forEach(url => {
+                        const img = document.createElement('img');
+                        img.src = url;
+                        img.className = "rounded-xl shadow-md border-2 border-white hover:scale-105 transition transform";
+                        gallery.appendChild(img);
+                    });
+                } else {
+                    status.innerText = "❌ No matching photos found. Try again!";
+                }
+
+            } catch (err) {
+                console.error(err);
+                status.innerText = "Error: " + err.message;
+            } finally {
+                btn.disabled = false;
+            }
         }
     </script>
 </body>
