@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (VIRTUAL INJECTION)
- * This version completely bypasses face-api.js's automatic URL fetching.
+ * AI EVENT FINDER - CORE LOGIC (VIRTUAL FILESYSTEM VERSION)
+ * Completely bypasses face-api.js network logic to stop 404 errors.
  */
 
 // 1. CONFIGURATION
@@ -8,68 +8,56 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Bypasses library URL logic by fetching manually
+ * INIT: Bypasses library URL logic by providing a custom virtual fetcher
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (VIRTUAL INJECTION) ---");
+        console.log("--- AI SYSTEM STARTUP (VIRTUAL FS) ---");
         statusLabel.innerText = "Connecting to models...";
 
         /**
-         * The Ultimate Fix: 
-         * We fetch the manifest, then we fetch the shards manually.
-         * We then combine them into a single "Model" object so the library
-         * never makes a network request on its own.
+         * This function handles the loading for each neural net.
+         * It manually fetches the .json.png and shards, then gives them
+         * to the library via a custom loader.
          */
-        const loadModelVirtual = async (net, manifestName) => {
-            const manifestUrl = MODEL_URL + manifestName;
-            console.log("Fetching Manifest:", manifestUrl);
-            
-            const manifestRes = await fetch(manifestUrl);
-            if (!manifestRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
-            const weightsManifest = await manifestRes.json();
+        const loadNeuralNet = async (net, manifestName) => {
+            // 1. Fetch the manifest manually
+            const mRes = await fetch(MODEL_URL + manifestName);
+            if (!mRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
+            const manifestData = await mRes.json();
 
-            // Manually fetch all shards listed in the manifest
-            for (let weightGroup of weightsManifest) {
-                for (let i = 0; i < weightGroup.paths.length; i++) {
-                    const shardName = weightGroup.paths[i];
-                    const shardUrl = MODEL_URL + shardName;
-                    console.log("Fetching Shard:", shardUrl);
-                    
-                    const shardRes = await fetch(shardUrl);
-                    if (!shardRes.ok) throw new Error(`Shard 404: ${shardName}`);
-                    
-                    // Convert shard to a Data URI so face-api thinks it's already "loaded"
-                    const blob = await shardRes.blob();
-                    const dataUri = await new Promise(resolve => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.readAsDataURL(blob);
-                    });
-                    
-                    // Replace the shard name with the actual data
-                    weightGroup.paths[i] = dataUri;
+            // 2. We use a custom fetcher to redirect shard requests
+            // face-api.js expects a function that returns a Response object
+            const customFetcher = async (url) => {
+                // If the library asks for the manifest again, give it our data
+                if (url.includes('.json')) {
+                    return new Response(JSON.stringify(manifestData));
                 }
-            }
+                
+                // If the library asks for a shard, fetch it from our MODEL_URL
+                // Shards are named without extensions in our current setup
+                const shardFileName = url.split('/').pop();
+                console.log("Virtual FS Redirection for Shard:", shardFileName);
+                return fetch(MODEL_URL + shardFileName);
+            };
 
-            // Now we load using the manifest object that contains all the data already
-            await net.loadFromUri(MODEL_URL, weightsManifest);
+            // 3. Load using the custom fetcher instead of a URL string
+            // Passing the custom fetcher as the second argument to load()
+            await net.load(customFetcher);
         };
 
-        // 1. Load Detector
+        // Load all 3 networks using the Virtual FS
         statusLabel.innerText = "Loading Detector...";
-        await loadModelVirtual(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
+        await loadNeuralNet(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
         
-        // 2. Load Landmarks
         statusLabel.innerText = "Loading Landmarks...";
-        await loadModelVirtual(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
+        await loadNeuralNet(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
         console.log("✅ Landmarks Loaded");
         
-        // 3. Load Recognition
         statusLabel.innerText = "Loading Recognizer...";
-        await loadModelVirtual(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
+        await loadNeuralNet(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
         console.log("✅ Recognizer Loaded");
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
@@ -189,7 +177,6 @@ async function downloadImage(url, index) {
         const response = await fetch(url);
         const blob = await response.blob();
         const file = new File([blob], `photo_${index}.jpg`, { type: "image/jpeg" });
-
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({ files: [file], title: 'Event Photo' });
         } else {
