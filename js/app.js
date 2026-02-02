@@ -1,5 +1,5 @@
 /**
- * PHOTO MAGIC - CORE AI LOGIC
+ * PHOTO MAGIC - HIGH ACCURACY VERSION
  */
 
 const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhTIKaBQ7Pf4TQbcBh3rUq-1lg_JLm9cH7DmYA_Jh2njBFC/exec"; 
@@ -8,14 +8,16 @@ const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        // CHANGED: Loading the high-accuracy SSD Mobilenet model instead of TinyFace
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-        statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
+        
+        statusLabel.innerText = "AI PRECISION ENGINE ACTIVE";
         statusLabel.classList.replace('text-indigo-400', 'text-emerald-500');
         checkUser();
     } catch (e) {
-        statusLabel.innerText = "ENGINE ERROR - CHECK CONNECTION";
+        statusLabel.innerText = "ENGINE ERROR";
     }
 }
 
@@ -41,8 +43,10 @@ async function capture() {
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
     
-    const detection = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-    if (!detection) return alert("Face not found! Please center your face.");
+    // CHANGED: Using SsdMobilenetv1Options for better accuracy
+    const detection = await faceapi.detectSingleFace(canvas, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
+    
+    if (!detection) return alert("Face not found! Please look directly at the camera.");
 
     const vector = Array.from(detection.descriptor);
     localStorage.setItem('face_print', JSON.stringify(vector));
@@ -62,31 +66,21 @@ async function performSearch(vector) {
     const status = document.getElementById('status');
     const gallery = document.getElementById('gallery');
     document.getElementById('results-area').classList.remove('hidden');
-    status.innerText = "Searching through event photos...";
+    status.innerText = "Analyzing matches...";
     gallery.innerHTML = "";
 
     try {
         const res = await fetch(APP_URL, { method: "POST", body: JSON.stringify({ action: "search", descriptor: vector }) });
         const matches = await res.json();
         
-        if (matches.error) {
-            status.innerText = "Server Error. Check Apps Script logs.";
-            return;
-        }
+        status.innerText = matches.length > 0 ? `Found ${matches.length} matches!` : "No matching photos found.";
 
-        status.innerText = matches.length > 0 ? `Found ${matches.length} matches!` : "No matches found.";
-
-        if (matches.length === 0) {
-            gallery.innerHTML = `<div class="col-span-full text-center py-20 text-slate-400">No photos found yet. Try again later!</div>`;
-            return;
-        }
-
-        matches.forEach((url, index) => {
+        matches.forEach((url) => {
             gallery.innerHTML += `
                 <div class="bg-white rounded-3xl overflow-hidden shadow-xl border border-slate-100 p-2">
                     <img src="${url}" class="w-full h-64 object-cover rounded-2xl mb-3" crossorigin="anonymous">
                     <a href="${url}" target="_blank" class="block w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm text-center">
-                        View / Save Photo
+                        View Photo
                     </a>
                 </div>`;
         });
@@ -99,9 +93,11 @@ async function uploadAndIndex() {
     const status = document.getElementById('status');
     
     for (let file of files) {
-        status.innerText = `Analyzing & Uploading: ${file.name}`;
+        status.innerText = `Precision Indexing: ${file.name}`;
         const img = await faceapi.bufferToImage(file);
-        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+        
+        // CHANGED: Using SsdMobilenetv1Options here as well
+        const detection = await faceapi.detectSingleFace(img, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptor();
         
         const descriptor = detection ? Array.from(detection.descriptor) : null;
         const base64 = await new Promise(res => {
@@ -113,12 +109,12 @@ async function uploadAndIndex() {
             body: JSON.stringify({ action: "upload", base64: base64, descriptor: descriptor, fileName: file.name, mimeType: file.type }) 
         });
     }
-    status.innerText = "All photos uploaded and indexed!";
+    status.innerText = "Upload Complete!";
     setTimeout(() => { status.innerText = ""; }, 3000);
 }
 
 function clearIdentity() {
-    if(confirm("Clear your face data?")) {
+    if(confirm("Reset face profile?")) {
         localStorage.removeItem('face_print');
         location.reload();
     }
