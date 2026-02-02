@@ -1,0 +1,9 @@
+# Treat all shard files as binary so they are not corrupted during upload
+*shard* binary
+*-weights_manifest.json* binary
+*weights* binary
+
+# Ensure common web files are handled as text
+*.html text
+*.css text
+*.js text
