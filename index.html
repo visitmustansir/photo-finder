@@ -3,53 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Event Gallery</title>
-    
-    <link rel="stylesheet" href="./css/styles.css">
-    
-    <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
-    
-    <script defer src="./js/app.js"></script>
+    <title>Photo Magic - AI Event Gallery</title>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
+        .btn-primary { background: #6366f1; transition: all 0.3s; }
+        .btn-primary:hover { background: #4f46e5; transform: translateY(-1px); }
+        .btn-success { background: #10b981; transition: all 0.3s; }
+        .btn-success:hover { background: #059669; transform: translateY(-1px); }
+        #video { transform: scaleX(-1); border-radius: 1rem; }
+    </style>
 </head>
-<body class="bg-slate-900 text-white font-sans p-4">
-    <div class="max-w-md mx-auto">
-        <header class="text-center mb-8">
-            <h1 class="text-2xl font-black text-indigo-400">EVENT GALLERY</h1>
-            <p id="model-status" class="text-[10px] text-slate-500 uppercase">System Initializing...</p>
-        </header>
+<body class="min-h-screen flex items-center justify-center p-4">
 
-        <div id="ui-container" class="space-y-4">
-            <div id="loading-spinner" class="py-10 text-center">
-                <div class="animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent mx-auto"></div>
-            </div>
-
-            <div id="returning-user" class="hidden bg-indigo-900/20 border border-indigo-500/30 p-6 rounded-3xl text-center">
-                <p class="text-sm text-indigo-200 mb-4">Welcome back! We found your face profile.</p>
-                <button onclick="autoSearch()" class="w-full bg-indigo-600 py-4 rounded-2xl font-bold shadow-lg active:scale-95 transition">FIND MY PHOTOS</button>
-                <button onclick="clearIdentity()" class="text-[10px] text-slate-500 mt-4 block mx-auto underline">New Scan / Switch User</button>
-            </div>
-
-            <div id="new-user" class="hidden">
-                <button onclick="startCamera()" class="w-full bg-indigo-600 py-6 rounded-3xl font-black text-xl shadow-2xl active:scale-95 transition">FIND MY PHOTOS</button>
+    <div class="max-w-md w-full glass-card rounded-[2rem] shadow-2xl p-8 border border-white">
+        
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-800 text-indigo-900 flex items-center justify-center gap-2">
+                📸 Photo Magic
+            </h1>
+            <p class="text-slate-500 text-sm mt-1">Align face in the frame for AI search</p>
+            <div id="model-status" class="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mt-2">
+                Initializing Engine...
             </div>
         </div>
 
-        <div id="video-container" class="hidden mt-4 relative rounded-3xl overflow-hidden border-4 border-indigo-600 shadow-2xl bg-black">
-            <video id="video" autoplay playsinline class="w-full"></video>
-            <div class="absolute inset-0 border-[30px] border-slate-900/60 pointer-events-none"></div>
-            <button onclick="capture()" class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-slate-900 px-10 py-3 rounded-full font-black shadow-xl">SCAN FACE</button>
+        <div id="ui-container">
+            <div class="bg-indigo-50 rounded-2xl p-5 mb-4 border border-indigo-100">
+                <h3 class="text-indigo-900 font-bold mb-3 flex items-center gap-2">
+                    Step 1: Upload Event Photos
+                </h3>
+                <input type="file" id="photoInput" multiple class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-white file:text-indigo-700 hover:file:bg-indigo-100 mb-4"/>
+                <button onclick="uploadAndIndex()" class="w-full btn-primary text-white font-bold py-3 rounded-xl shadow-lg">
+                    Upload to Cloud
+                </button>
+            </div>
+
+            <div class="bg-emerald-50 rounded-2xl p-5 border border-emerald-100">
+                <h3 class="text-emerald-900 font-bold mb-3">Step 2: Find Your Self</h3>
+                
+                <div id="new-user">
+                    <button onclick="startCamera()" class="w-full btn-success text-white font-bold py-3 rounded-xl shadow-lg">
+                        Open AI Face Scanner
+                    </button>
+                </div>
+
+                <div id="returning-user" class="hidden text-center">
+                    <button onclick="autoSearch()" class="w-full btn-success text-white font-bold py-3 rounded-xl shadow-lg mb-2">
+                        Find My Photos Again
+                    </button>
+                    <button onclick="clearIdentity()" class="text-[10px] text-slate-400 underline uppercase tracking-widest">
+                        Not you? Reset
+                    </button>
+                </div>
+            </div>
+
+            <div id="status" class="text-center text-indigo-600 font-bold text-sm mt-4 italic"></div>
         </div>
 
-        <div id="results-area" class="mt-8 hidden">
-            <h2 id="status" class="font-bold text-emerald-400 mb-4 text-center">Found 0 photos</h2>
-            <div id="gallery" class="grid grid-cols-2 gap-3"></div>
-        </div>
-
-        <div class="mt-20 p-6 border border-slate-800 rounded-3xl bg-slate-800/30">
-            <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-3">Admin Panel</p>
-            <input type="file" id="photoInput" multiple class="text-xs text-slate-400 mb-4 block w-full">
-            <button onclick="uploadAndIndex()" class="w-full bg-slate-700 py-3 rounded-xl text-xs font-bold hover:bg-slate-600">INDEX NEW PHOTOS</button>
+        <div id="video-container" class="hidden text-center">
+            <video id="video" width="100%" height="auto" autoplay muted playsinline class="shadow-2xl border-4 border-white"></video>
+            <div class="mt-4 flex gap-2">
+                <button onclick="capture()" class="flex-1 bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-xl">
+                    SCAN FACE
+                </button>
+                <button onclick="location.reload()" class="px-6 bg-slate-200 text-slate-600 font-bold rounded-2xl">
+                    ✕
+                </button>
+            </div>
         </div>
     </div>
+
+    <div id="results-area" class="fixed inset-0 bg-white/95 z-50 hidden overflow-y-auto p-6">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-2xl font-800 text-indigo-900">Your Found Photos</h2>
+                <button onclick="document.getElementById('results-area').classList.add('hidden')" class="bg-slate-100 p-3 rounded-full text-slate-500 font-bold">Close</button>
+            </div>
+            <div id="gallery" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
 </body>
 </html>
