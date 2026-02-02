@@ -62,13 +62,19 @@ async function performSearch(vector) {
     const status = document.getElementById('status');
     const gallery = document.getElementById('gallery');
     document.getElementById('results-area').classList.remove('hidden');
-    status.innerText = "Scanning database...";
+    status.innerText = "Searching through event photos...";
     gallery.innerHTML = "";
 
     try {
         const res = await fetch(APP_URL, { method: "POST", body: JSON.stringify({ action: "search", descriptor: vector }) });
         const matches = await res.json();
-        status.innerText = "";
+        
+        if (matches.error) {
+            status.innerText = "Server Error. Check Apps Script logs.";
+            return;
+        }
+
+        status.innerText = matches.length > 0 ? `Found ${matches.length} matches!` : "No matches found.";
 
         if (matches.length === 0) {
             gallery.innerHTML = `<div class="col-span-full text-center py-20 text-slate-400">No photos found yet. Try again later!</div>`;
@@ -76,13 +82,12 @@ async function performSearch(vector) {
         }
 
         matches.forEach((url, index) => {
-            const directUrl = url.replace('file/d/', 'uc?export=download&id=').replace('/view?usp=sharing', '');
             gallery.innerHTML += `
                 <div class="bg-white rounded-3xl overflow-hidden shadow-xl border border-slate-100 p-2">
-                    <img src="${url}" class="w-full h-64 object-cover rounded-2xl mb-3">
-                    <button onclick="downloadImage('${directUrl}', ${index})" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm">
-                        Download Photo
-                    </button>
+                    <img src="${url}" class="w-full h-64 object-cover rounded-2xl mb-3" crossorigin="anonymous">
+                    <a href="${url}" target="_blank" class="block w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm text-center">
+                        View / Save Photo
+                    </a>
                 </div>`;
         });
     } catch (e) { status.innerText = "Connection error."; }
@@ -94,11 +99,16 @@ async function uploadAndIndex() {
     const status = document.getElementById('status');
     
     for (let file of files) {
-        status.innerText = `AI Indexing: ${file.name}`;
+        status.innerText = `Analyzing & Uploading: ${file.name}`;
         const img = await faceapi.bufferToImage(file);
         const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-        const descriptor = detection ? Array.from(detection.descriptor) : null;
         
+        if (!detection) {
+            console.log("No face in " + file.name + ". Skipping...");
+            continue; 
+        }
+
+        const descriptor = Array.from(detection.descriptor);
         const base64 = await new Promise(res => {
             const r = new FileReader(); r.readAsDataURL(file); r.onload = () => res(r.result.split(',')[1]);
         });
@@ -109,6 +119,7 @@ async function uploadAndIndex() {
         });
     }
     status.innerText = "All photos uploaded and indexed!";
+    setTimeout(() => { status.innerText = ""; }, 3000);
 }
 
 function clearIdentity() {
