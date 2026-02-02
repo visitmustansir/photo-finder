@@ -1,6 +1,5 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (BASE64 DATA URI LOADER)
- * This version bypasses face-api.js's internal URL "correction" logic.
+ * AI EVENT FINDER - CORE LOGIC (FINAL STABLE VERSION)
  */
 
 // 1. CONFIGURATION
@@ -8,47 +7,25 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Bypasses library URL logic by fetching manually and using Data URIs
+ * INIT: Load AI models
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (DATA URI MODE) ---");
-        statusLabel.innerText = "Connecting to models...";
+        console.log("--- AI SYSTEM STARTUP ---");
+        statusLabel.innerText = "Initializing AI Engine...";
 
-        /**
-         * Custom Fetcher:
-         * Fetches the .json.png file, converts it to a Data URI so the 
-         * library cannot "correct" the filename.
-         */
-        const loadModelManual = async (net, manifestName) => {
-            const response = await fetch(MODEL_URL + manifestName);
-            if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-            
-            const jsonText = await response.text();
-            // Create a blob/data-uri from the content
-            const blob = new Blob([jsonText], { type: 'application/json' });
-            const dataUri = URL.createObjectURL(blob);
-            
-            console.log(`Loading ${manifestName} via Data URI`);
-            await net.loadFromUri(dataUri);
-            // Clean up memory
-            URL.revokeObjectURL(dataUri);
-        };
-
-        // 1. Load Detector
-        statusLabel.innerText = "Loading Detector...";
-        await loadModelManual(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
+        // Pointing to .json.png manifests. The library will look for 
+        // the shards (without .png) in the same folder automatically.
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
         
-        // 2. Load Landmarks
         statusLabel.innerText = "Loading Landmarks...";
-        await loadModelManual(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL, 'face_landmark_68_model-weights_manifest.json.png');
         console.log("✅ Landmarks Loaded");
         
-        // 3. Load Recognition
         statusLabel.innerText = "Loading Recognizer...";
-        await loadModelManual(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL, 'face_recognition_model-weights_manifest.json.png');
         console.log("✅ Recognizer Loaded");
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
@@ -57,7 +34,7 @@ async function init() {
         
     } catch (e) {
         console.error("AI FATAL ERROR:", e);
-        statusLabel.innerText = "LOAD FAILED: " + e.message.substring(0, 45);
+        statusLabel.innerText = "LOAD FAILED: Check Shard Filenames";
         statusLabel.style.color = "#ff4d4d"; 
     }
 }
