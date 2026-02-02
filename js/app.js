@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (VIRTUAL FILESYSTEM VERSION)
- * Completely bypasses face-api.js network logic to stop 404 errors.
+ * AI EVENT FINDER - CORE LOGIC (VIRTUAL FS STABLE)
+ * Bypasses face-api.js picky URI validation.
  */
 
 // 1. CONFIGURATION
@@ -13,41 +13,38 @@ const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/';
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (VIRTUAL FS) ---");
+        console.log("--- AI SYSTEM STARTUP (VIRTUAL FS STABLE) ---");
         statusLabel.innerText = "Connecting to models...";
 
         /**
-         * This function handles the loading for each neural net.
-         * It manually fetches the .json.png and shards, then gives them
-         * to the library via a custom loader.
+         * The Fix: Provide a dummy string to satisfy the library's internal 
+         * 'expected model uri' check, while the fetcher does the real work.
          */
         const loadNeuralNet = async (net, manifestName) => {
-            // 1. Fetch the manifest manually
+            // 1. Pre-fetch the manifest
             const mRes = await fetch(MODEL_URL + manifestName);
             if (!mRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
             const manifestData = await mRes.json();
 
-            // 2. We use a custom fetcher to redirect shard requests
-            // face-api.js expects a function that returns a Response object
+            // 2. Custom fetcher that maps library requests to our GitHub files
             const customFetcher = async (url) => {
-                // If the library asks for the manifest again, give it our data
-                if (url.includes('.json')) {
+                const fileName = url.split('/').pop();
+                
+                // If it looks like a manifest request, return our pre-fetched data
+                if (fileName.includes('manifest.json')) {
                     return new Response(JSON.stringify(manifestData));
                 }
                 
-                // If the library asks for a shard, fetch it from our MODEL_URL
-                // Shards are named without extensions in our current setup
-                const shardFileName = url.split('/').pop();
-                console.log("Virtual FS Redirection for Shard:", shardFileName);
-                return fetch(MODEL_URL + shardFileName);
+                // Otherwise, fetch the shard from the real GitHub location
+                console.log("Virtual FS fetching shard:", fileName);
+                return fetch(MODEL_URL + fileName);
             };
 
-            // 3. Load using the custom fetcher instead of a URL string
-            // Passing the custom fetcher as the second argument to load()
-            await net.load(customFetcher);
+            // 3. We pass 'MODEL_URL' as a dummy string and our fetcher as the actual logic
+            await net.load(MODEL_URL, customFetcher);
         };
 
-        // Load all 3 networks using the Virtual FS
+        // Load networks
         statusLabel.innerText = "Loading Detector...";
         await loadNeuralNet(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
@@ -143,7 +140,7 @@ async function performSearch(vector) {
     const resultsArea = document.getElementById('results-area');
     const gallery = document.getElementById('gallery');
     resultsArea.classList.remove('hidden');
-    status.innerText = "Searching...";
+    status.innerText = "Searching database...";
     gallery.innerHTML = "";
 
     try {
@@ -191,7 +188,7 @@ async function downloadImage(url, index) {
 }
 
 /**
- * ADMIN: Indexing
+ * ADMIN INDEXING
  */
 async function uploadAndIndex() {
     const files = document.getElementById('photoInput').files;
@@ -210,8 +207,10 @@ async function uploadAndIndex() {
 }
 
 function clearIdentity() {
-    localStorage.removeItem('face_print');
-    location.reload();
+    if(confirm("Forget your face profile?")) {
+        localStorage.removeItem('face_print');
+        location.reload();
+    }
 }
 
 init();
