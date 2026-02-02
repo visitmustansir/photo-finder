@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (WEIGHT INJECTION VERSION)
- * Bypasses the library's network layer entirely by manually loading weights.
+ * AI EVENT FINDER - CORE LOGIC (RAW ENGINE INJECTION)
+ * Bypasses high-level validation by talking directly to the NN classes.
  */
 
 // 1. CONFIGURATION
@@ -8,51 +8,49 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Bypasses library URL logic by manually injecting weights
+ * INIT: Bypasses library URL logic by manually injecting weights into Raw Classes
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (WEIGHT INJECTION) ---");
+        console.log("--- AI SYSTEM STARTUP (RAW ENGINE) ---");
         statusLabel.innerText = "Connecting to models...";
 
         /**
-         * The Fix: 
-         * Instead of using net.load(), we manually fetch the .json.png
-         * and then tell the network to load those specific weights.
+         * The Ultimate Fix:
+         * Instead of net.loadFromUri, we use the raw internal load method
+         * which accepts (manifest, fetcher) without requiring a dummy string.
          */
-        const injectWeights = async (net, manifestName) => {
-            // 1. Get the manifest
+        const loadRaw = async (net, manifestName) => {
+            // 1. Fetch manifest
             const mRes = await fetch(MODEL_URL + manifestName);
             if (!mRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
             const manifestData = await mRes.json();
 
-            // 2. Define our own fetcher for shards
-            const fetchWeights = async (uri) => {
-                // Ensure we get just the filename from the manifest paths
+            // 2. Fetcher for shards
+            const shardFetcher = async (uri) => {
                 const fileName = uri.split('/').pop();
                 const shardUrl = MODEL_URL + fileName;
-                console.log("Manual Weight Fetch:", shardUrl);
-                const res = await fetch(shardUrl);
-                return res;
+                console.log("Loading raw shard:", fileName);
+                return fetch(shardUrl);
             };
 
-            // 3. Use the internal 'load' with the manifest object and our fetcher
-            // This is the direct internal API call that bypasses URL guessing
-            await net.load(manifestData, fetchWeights);
+            // 3. Directly calling the internal weight loader
+            // This is the most "naked" way to load weights in face-api.js
+            await net.load(manifestData, shardFetcher);
         };
 
-        // Load all 3 networks manually
+        // Load all 3 networks using the raw loader
         statusLabel.innerText = "Loading Detector...";
-        await injectWeights(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
+        await loadRaw(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
         
         statusLabel.innerText = "Loading Landmarks...";
-        await injectWeights(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
+        await loadRaw(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
         console.log("✅ Landmarks Loaded");
         
         statusLabel.innerText = "Loading Recognizer...";
-        await injectWeights(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
+        await loadRaw(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
         console.log("✅ Recognizer Loaded");
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
