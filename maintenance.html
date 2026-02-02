@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Maintenance - Photo Magic</title>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -13,28 +12,28 @@
 </head>
 <body class="p-6 flex items-center justify-center min-h-screen">
     <div class="max-w-2xl w-full bg-slate-800 p-8 rounded-[2rem] shadow-2xl border border-slate-700">
-        <h1 class="text-2xl font-bold mb-2 text-indigo-400">Database Repair Tool</h1>
-        <p class="text-slate-400 mb-6 text-sm">Use this to generate AI descriptors for images already in your Drive.</p>
+        <h1 class="text-2xl font-bold mb-2 text-indigo-400">CORS-Safe Repair Tool</h1>
+        <p class="text-slate-400 mb-6 text-sm">Processing images via Google Script Proxy to bypass security blocks.</p>
 
         <div class="mb-6 p-5 bg-indigo-900/20 rounded-2xl border border-indigo-500/20 text-center">
-            <div id="engine-status" class="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-3 italic">Warming up AI Engine...</div>
+            <div id="engine-status" class="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-3 italic">Loading AI...</div>
             <button id="start-btn" disabled onclick="runMaintenance()" class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 py-4 rounded-xl font-bold transition-all shadow-lg text-white">
-                START REPAIR SCAN
+                START PROXY REPAIR
             </button>
         </div>
 
         <div class="mb-4">
             <div class="flex justify-between text-xs mb-2">
-                <span class="text-slate-400 uppercase tracking-tighter">Overall Progress</span>
+                <span class="text-slate-400">Progress</span>
                 <span id="progress-percent" class="text-indigo-400 font-bold">0%</span>
             </div>
             <div class="w-full bg-slate-900 rounded-full h-3 p-1">
-                <div id="progress-bar" class="bg-indigo-500 h-1 rounded-full transition-all duration-500" style="width: 0%"></div>
+                <div id="progress-bar" class="bg-indigo-500 h-1 rounded-full transition-all" style="width: 0%"></div>
             </div>
         </div>
 
         <div id="log" class="log-box p-4 rounded-xl mt-4">
-            <div class="text-slate-500">> System Booting...</div>
+            <div class="text-slate-500">> Ready.</div>
         </div>
     </div>
 
@@ -53,54 +52,44 @@
 
         async function init() {
             try {
-                // Load AI Models from the CDN
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
                 await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
                 document.getElementById('engine-status').innerText = "AI System Ready";
                 document.getElementById('start-btn').disabled = false;
-                addLog("AI Models loaded. Connection to Google verified.");
+                addLog("AI engine loaded and CORS-proxy active.");
             } catch (e) {
-                addLog("Initialization Error: " + e.message, "text-red-400");
+                addLog("Init Error: " + e.message, "text-red-400");
             }
         }
 
         async function runMaintenance() {
             document.getElementById('start-btn').disabled = true;
-            addLog("Contacting Google Drive API...", "text-indigo-400");
+            addLog("Scanning file list...", "text-indigo-400");
 
             try {
                 const res = await fetch(APP_URL, { method: "POST", body: JSON.stringify({ action: "list_files" }) });
-                const rawData = await res.json();
-                
-                // TYPE CHECK: Ensure we have an array to filter
-                let files = [];
-                if (Array.isArray(rawData)) {
-                    files = rawData;
-                } else if (rawData.error) {
-                    throw new Error(rawData.error);
-                } else {
-                    throw new Error("Invalid data format received.");
-                }
-
+                const files = await res.json();
                 const broken = files.filter(f => !f.hasAI);
-                addLog(`Found ${files.length} images. ${broken.length} need repair.`);
                 
-                if (broken.length === 0) {
-                    addLog("All images are perfectly indexed!", "text-emerald-400");
-                    return;
-                }
+                addLog(`Found ${broken.length} images needing AI indexing.`);
 
                 for (let i = 0; i < broken.length; i++) {
                     const file = broken[i];
                     try {
-                        // Using proxy to prevent CORS issues
-                        const imgUrl = "https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=2592000&url=" + encodeURIComponent("https://lh3.googleusercontent.com/d/" + file.id);
+                        // 1. Ask Google Script for the image Base64 data
+                        const imgDataRes = await fetch(APP_URL, { 
+                            method: "POST", 
+                            body: JSON.stringify({ action: "get_image_base64", fileId: file.id }) 
+                        });
+                        const imgData = await imgDataRes.json();
                         
-                        const img = await faceapi.fetchImage(imgUrl);
+                        // 2. Load the image into the AI engine
+                        const img = await faceapi.fetchImage(imgData.base64);
                         const detect = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                         
                         if (detect) {
+                            // 3. Send the AI descriptor back to Google Drive
                             await fetch(APP_URL, { 
                                 method: "POST", 
                                 body: JSON.stringify({ 
@@ -111,20 +100,19 @@
                             });
                             addLog(`Indexed: ${file.id}`, "text-emerald-500");
                         } else {
-                            addLog(`Skipped (No face found): ${file.id}`, "text-slate-500");
+                            addLog(`No face in: ${file.id}`, "text-slate-500");
                         }
                     } catch (e) {
-                        addLog(`Failed: ${file.id} - ${e.message}`, "text-red-400");
+                        addLog(`Error processing ${file.id}: ${e.message}`, "text-red-400");
                     }
                     
                     const percent = Math.round(((i + 1) / broken.length) * 100);
                     document.getElementById('progress-bar').style.width = percent + "%";
                     document.getElementById('progress-percent').innerText = percent + "%";
                 }
-                addLog("MAINTENANCE FINISHED. Your database is now healthy.", "text-emerald-400");
+                addLog("DATABASE REPAIR COMPLETE!", "text-emerald-400");
             } catch (e) {
-                addLog("Critical Failure: " + e.message, "text-red-500");
-                document.getElementById('start-btn').disabled = false;
+                addLog("Fatal: " + e.message, "text-red-500");
             }
         }
         init();
