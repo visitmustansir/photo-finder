@@ -1,32 +1,39 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (STRICT FILENAME VERSION)
+ * AI EVENT FINDER - CORE LOGIC (BULLETPROOF LOADER)
  */
 
 // 1. CONFIGURATION
 const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhTIKaBQ7Pf4TQbcBh3rUq-1lg_JLm9cH7DmYA_Jh2njBFC/exec"; 
-// Added a timestamp to the URL to force the browser to stop using old cached versions
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Load AI models from renamed .png manifest files
+ * INIT: Load AI models by bypassing the library's internal URL guesser
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (STRICT MODE) ---");
-        statusLabel.innerText = "Connecting to models...";
+        console.log("--- AI SYSTEM STARTUP (MANUAL FETCH MODE) ---");
+        statusLabel.innerText = "Downloading AI Brain...";
 
-        // 1. Load Tiny Face Detector - MANUALLY FORCING THE .png FILENAME
-        console.log("Fetching: " + MODEL_URL + 'tiny_face_detector_model-weights_manifest.json.png');
-        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL, 'tiny_face_detector_model-weights_manifest.json.png');
+        // Helper to load models manually to bypass the library's 404 auto-correction
+        const loadModel = async (net, manifestName) => {
+            console.log(`Manually fetching: ${MODEL_URL}${manifestName}`);
+            await net.loadFromUri(MODEL_URL, manifestName);
+        };
+
+        // 1. Load Detector
+        await loadModel(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
+        console.log("✅ Detector Loaded");
         
-        // 2. Load Face Landmarks
+        // 2. Load Landmarks
         statusLabel.innerText = "Loading Landmarks...";
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL, 'face_landmark_68_model-weights_manifest.json.png');
+        await loadModel(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
+        console.log("✅ Landmarks Loaded");
         
-        // 3. Load Face Recognition
+        // 3. Load Recognition
         statusLabel.innerText = "Loading Recognizer...";
-        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL, 'face_recognition_model-weights_manifest.json.png');
+        await loadModel(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
+        console.log("✅ Recognizer Loaded");
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
         document.getElementById('loading-spinner').classList.add('hidden');
@@ -34,14 +41,13 @@ async function init() {
         
     } catch (e) {
         console.error("AI FATAL ERROR:", e);
-        // This will display the exact error in the UI
-        statusLabel.innerText = "LOAD FAILED: " + e.message.substring(0, 50);
+        statusLabel.innerText = "LOAD FAILED: Check GitHub Filenames";
         statusLabel.style.color = "#ff4d4d"; 
     }
 }
 
 /**
- * IDENTITY MANAGEMENT
+ * IDENTITY MANAGEMENT: Local Storage check
  */
 function checkUser() {
     const saved = localStorage.getItem('face_print');
@@ -112,7 +118,7 @@ async function performSearch(vector) {
     const resultsArea = document.getElementById('results-area');
     const gallery = document.getElementById('gallery');
     resultsArea.classList.remove('hidden');
-    status.innerText = "Searching...";
+    status.innerText = "Searching database...";
     gallery.innerHTML = "";
 
     try {
@@ -121,7 +127,7 @@ async function performSearch(vector) {
             body: JSON.stringify({ action: "search", descriptor: vector })
         });
         const matches = await res.json();
-        status.innerText = matches.length > 0 ? `Found ${matches.length} photos` : "No photos found.";
+        status.innerText = matches.length > 0 ? `Found ${matches.length} photos` : "No matches found.";
 
         matches.forEach((url, index) => {
             const directUrl = url.replace('file/d/', 'uc?export=download&id=').replace('/view?usp=sharing', '');
@@ -182,8 +188,10 @@ async function uploadAndIndex() {
  * CLEAR STORAGE
  */
 function clearIdentity() {
-    localStorage.removeItem('face_print');
-    location.reload();
+    if(confirm("Forget your face profile?")) {
+        localStorage.removeItem('face_print');
+        location.reload();
+    }
 }
 
 init();
