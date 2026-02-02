@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (MANUAL DATA INJECTION)
- * This version bypasses the library's internal URL correction.
+ * AI EVENT FINDER - CORE LOGIC (VIRTUAL INJECTION)
+ * This version completely bypasses face-api.js's automatic URL fetching.
  */
 
 // 1. CONFIGURATION
@@ -13,39 +13,63 @@ const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/';
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (INJECTION MODE) ---");
+        console.log("--- AI SYSTEM STARTUP (VIRTUAL INJECTION) ---");
         statusLabel.innerText = "Connecting to models...";
 
         /**
-         * The Fix: We fetch the .json.png as text, parse it to an object,
-         * and then tell the library to load using that object.
+         * The Ultimate Fix: 
+         * We fetch the manifest, then we fetch the shards manually.
+         * We then combine them into a single "Model" object so the library
+         * never makes a network request on its own.
          */
-        const loadManual = async (net, manifestName) => {
-            const url = MODEL_URL + manifestName;
-            console.log("Fetching Manifest:", url);
+        const loadModelVirtual = async (net, manifestName) => {
+            const manifestUrl = MODEL_URL + manifestName;
+            console.log("Fetching Manifest:", manifestUrl);
             
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`Status ${response.status} for ${manifestName}`);
-            
-            const manifest = await response.json();
-            
-            // We pass the parsed object and the base URL for the shards
-            await net.loadFromUri(MODEL_URL, manifest);
+            const manifestRes = await fetch(manifestUrl);
+            if (!manifestRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
+            const weightsManifest = await manifestRes.json();
+
+            // Manually fetch all shards listed in the manifest
+            for (let weightGroup of weightsManifest) {
+                for (let i = 0; i < weightGroup.paths.length; i++) {
+                    const shardName = weightGroup.paths[i];
+                    const shardUrl = MODEL_URL + shardName;
+                    console.log("Fetching Shard:", shardUrl);
+                    
+                    const shardRes = await fetch(shardUrl);
+                    if (!shardRes.ok) throw new Error(`Shard 404: ${shardName}`);
+                    
+                    // Convert shard to a Data URI so face-api thinks it's already "loaded"
+                    const blob = await shardRes.blob();
+                    const dataUri = await new Promise(resolve => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                    
+                    // Replace the shard name with the actual data
+                    weightGroup.paths[i] = dataUri;
+                }
+            }
+
+            // Now we load using the manifest object that contains all the data already
+            await net.loadFromUri(MODEL_URL, weightsManifest);
         };
 
         // 1. Load Detector
         statusLabel.innerText = "Loading Detector...";
-        await loadManual(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
+        await loadModelVirtual(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
         
         // 2. Load Landmarks
         statusLabel.innerText = "Loading Landmarks...";
-        await loadManual(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
+        await loadModelVirtual(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
         console.log("✅ Landmarks Loaded");
         
         // 3. Load Recognition
         statusLabel.innerText = "Loading Recognizer...";
-        await loadManual(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
+        await loadModelVirtual(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
         console.log("✅ Recognizer Loaded");
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
@@ -140,7 +164,7 @@ async function performSearch(vector) {
             body: JSON.stringify({ action: "search", descriptor: vector })
         });
         const matches = await res.json();
-        status.innerText = matches.length > 0 ? `Found ${matches.length} photos` : "No photos found.";
+        status.innerText = matches.length > 0 ? `Found ${matches.length} photos` : "No matches found.";
 
         matches.forEach((url, index) => {
             const directUrl = url.replace('file/d/', 'uc?export=download&id=').replace('/view?usp=sharing', '');
