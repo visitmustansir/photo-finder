@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (VIRTUAL FS STABLE)
- * Bypasses face-api.js picky URI validation.
+ * AI EVENT FINDER - CORE LOGIC (TOTAL CONTROL VERSION)
+ * Passes a pre-parsed object to the AI to prevent 404 URL guessing.
  */
 
 // 1. CONFIGURATION
@@ -8,40 +8,40 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Bypasses library URL logic by providing a custom virtual fetcher
+ * INIT: Loads models by injecting the JSON data directly
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (VIRTUAL FS STABLE) ---");
+        console.log("--- AI SYSTEM STARTUP (OBJECT INJECTION) ---");
         statusLabel.innerText = "Connecting to models...";
 
         /**
-         * The Fix: Provide a dummy string to satisfy the library's internal 
-         * 'expected model uri' check, while the fetcher does the real work.
+         * The Fix: 
+         * 1. We fetch the .json.png manifest ourselves.
+         * 2. We pass that DATA (the object) to the library.
+         * 3. We use a fetcher ONLY for the binary shards.
          */
         const loadNeuralNet = async (net, manifestName) => {
-            // 1. Pre-fetch the manifest
+            // 1. Fetch manifest as text/json
             const mRes = await fetch(MODEL_URL + manifestName);
             if (!mRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
             const manifestData = await mRes.json();
 
-            // 2. Custom fetcher that maps library requests to our GitHub files
-            const customFetcher = async (url) => {
+            // 2. Define a fetcher that only handles shard requests
+            const shardFetcher = async (url) => {
                 const fileName = url.split('/').pop();
-                
-                // If it looks like a manifest request, return our pre-fetched data
-                if (fileName.includes('manifest.json')) {
+                // Ensure we don't accidentally try to fetch a .json file here
+                if (fileName.endsWith('.json')) {
                     return new Response(JSON.stringify(manifestData));
                 }
-                
-                // Otherwise, fetch the shard from the real GitHub location
-                console.log("Virtual FS fetching shard:", fileName);
+                console.log("Fetching binary shard:", fileName);
                 return fetch(MODEL_URL + fileName);
             };
 
-            // 3. We pass 'MODEL_URL' as a dummy string and our fetcher as the actual logic
-            await net.load(MODEL_URL, customFetcher);
+            // 3. IMPORTANT: Passing the OBJECT (manifestData) 
+            // This prevents the library from trying to fetch a .json URL
+            await net.load(manifestData, shardFetcher);
         };
 
         // Load networks
@@ -167,7 +167,7 @@ async function performSearch(vector) {
 }
 
 /**
- * NATIVE SAVE
+ * SAVE IMAGE
  */
 async function downloadImage(url, index) {
     try {
