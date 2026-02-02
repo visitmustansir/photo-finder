@@ -103,12 +103,7 @@ async function uploadAndIndex() {
         const img = await faceapi.bufferToImage(file);
         const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
         
-        if (!detection) {
-            console.log("No face in " + file.name + ". Skipping...");
-            continue; 
-        }
-
-        const descriptor = Array.from(detection.descriptor);
+        const descriptor = detection ? Array.from(detection.descriptor) : null;
         const base64 = await new Promise(res => {
             const r = new FileReader(); r.readAsDataURL(file); r.onload = () => res(r.result.split(',')[1]);
         });
