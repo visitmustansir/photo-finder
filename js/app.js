@@ -1,5 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (DEBUG VERSION)
+ * AI EVENT FINDER - CORE LOGIC (EMERGENCY DEBUG VERSION)
+ * Handles: Biometric enrollment, persistent identity, and photo matching.
  */
 
 // 1. CONFIGURATION
@@ -7,32 +8,49 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Load AI models from renamed .png manifest files
+ * INIT: Load AI models from renamed .png manifest files with detailed logs
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("Attempting to load models from:", MODEL_URL);
+        console.log("--- AI SYSTEM STARTUP ---");
+        console.log("Base Model URL:", MODEL_URL);
         
-        // Pointing specifically to the manifest files renamed to .png to bypass GitHub corruption
-        statusLabel.innerText = "Loading Detector...";
+        statusLabel.innerText = "Connecting to models...";
+
+        // Debugging function to log specific fetch attempts
+        const logFetch = (name) => console.log(`Fetching Manifest: ${MODEL_URL}${name}`);
+
+        // 1. Load Tiny Face Detector
+        logFetch('tiny_face_detector_model-weights_manifest.json.png');
         await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL, 'tiny_face_detector_model-weights_manifest.json.png');
+        console.log("✅ Detector Loaded");
         
+        // 2. Load Face Landmarks
         statusLabel.innerText = "Loading Landmarks...";
+        logFetch('face_landmark_68_model-weights_manifest.json.png');
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL, 'face_landmark_68_model-weights_manifest.json.png');
+        console.log("✅ Landmarks Loaded");
         
+        // 3. Load Face Recognition
         statusLabel.innerText = "Loading Recognizer...";
+        logFetch('face_recognition_model-weights_manifest.json.png');
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL, 'face_recognition_model-weights_manifest.json.png');
+        console.log("✅ Recognizer Loaded");
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
         document.getElementById('loading-spinner').classList.add('hidden');
-        checkUser();
-    } catch (e) {
-        console.error("AI Init Error Details:", e);
         
-        let errorMsg = "MODEL ERROR: ";
+        // Check for existing biometric profile
+        checkUser();
+        
+    } catch (e) {
+        console.error("--- AI FATAL ERROR ---");
+        console.error("Error Details:", e);
+        
+        let errorMsg = "LOAD FAILED: ";
         if (e.message && e.message.includes("404")) {
-            errorMsg += "File not found. Check if .png files are uploaded.";
+            errorMsg += "A required file is missing in /models/. Press F12 for details.";
         } else {
             errorMsg += e.message.substring(0, 50);
         }
@@ -43,12 +61,13 @@ async function init() {
 }
 
 /**
- * IDENTITY MANAGEMENT: Check LocalStorage
+ * IDENTITY MANAGEMENT: Check LocalStorage for saved face prints
  */
 function checkUser() {
     const saved = localStorage.getItem('face_print');
     const retUser = document.getElementById('returning-user');
     const newUser = document.getElementById('new-user');
+    
     if (saved) {
         retUser.classList.remove('hidden');
         newUser.classList.add('hidden');
@@ -68,12 +87,12 @@ async function startCamera() {
         document.getElementById('video-container').classList.remove('hidden');
         document.getElementById('ui-container').classList.add('hidden');
     } catch (err) {
-        alert("Camera access denied.");
+        alert("Camera access denied. Please check permissions.");
     }
 }
 
 /**
- * CAPTURE: Analyze face
+ * CAPTURE: Analyze the face and save the descriptor
  */
 async function capture() {
     const video = document.getElementById('video');
@@ -82,15 +101,19 @@ async function capture() {
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
     
+    // AI Detection
     const detection = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
                                    .withFaceLandmarks()
                                    .withFaceDescriptor();
     
-    if (!detection) return alert("Face not found! Try again.");
+    if (!detection) return alert("Face not found! Please look directly at the camera.");
 
     const vector = Array.from(detection.descriptor);
+    
+    // Save to browser memory
     localStorage.setItem('face_print', JSON.stringify(vector));
     
+    // Cleanup camera
     video.srcObject.getTracks().forEach(t => t.stop());
     document.getElementById('video-container').classList.add('hidden');
     document.getElementById('ui-container').classList.remove('hidden');
@@ -99,7 +122,7 @@ async function capture() {
 }
 
 /**
- * AUTO-SEARCH: Use saved profile
+ * AUTO-SEARCH: Search using the stored profile
  */
 async function autoSearch() {
     const vector = JSON.parse(localStorage.getItem('face_print'));
@@ -107,14 +130,15 @@ async function autoSearch() {
 }
 
 /**
- * SEARCH: Communicate with Apps Script
+ * SEARCH: Fetch matches from Google Apps Script
  */
 async function performSearch(vector) {
     const status = document.getElementById('status');
     const resultsArea = document.getElementById('results-area');
     const gallery = document.getElementById('gallery');
+    
     resultsArea.classList.remove('hidden');
-    status.innerText = "Scanning database...";
+    status.innerText = "Searching database...";
     gallery.innerHTML = "";
 
     try {
@@ -127,22 +151,24 @@ async function performSearch(vector) {
         status.innerText = matches.length > 0 ? `Found ${matches.length} photos` : "No photos found.";
 
         matches.forEach((url, index) => {
+            // Direct download link construction
             const directUrl = url.replace('file/d/', 'uc?export=download&id=').replace('/view?usp=sharing', '');
+            
             gallery.innerHTML += `
                 <div class="relative bg-slate-800 rounded-2xl overflow-hidden shadow-lg border border-slate-700">
                     <img src="${url}" class="w-full h-48 object-cover">
-                    <button onclick="downloadImage('${directUrl}', ${index})" class="absolute bottom-2 left-2 right-2 bg-indigo-600 py-2 rounded-xl text-[10px] font-bold shadow-lg">
+                    <button onclick="downloadImage('${directUrl}', ${index})" class="absolute bottom-2 left-2 right-2 bg-indigo-600 py-2 rounded-xl text-[10px] font-bold shadow-lg active:scale-95 transition">
                         SAVE TO PHONE
                     </button>
                 </div>`;
         });
     } catch (e) { 
-        status.innerText = "Connection error."; 
+        status.innerText = "Connection error. Please try again."; 
     }
 }
 
 /**
- * NATIVE SAVE
+ * NATIVE SAVE: Use the Web Share API
  */
 async function downloadImage(url, index) {
     try {
@@ -151,7 +177,11 @@ async function downloadImage(url, index) {
         const file = new File([blob], `photo_${index}.jpg`, { type: "image/jpeg" });
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Event Photo' });
+            await navigator.share({
+                files: [file],
+                title: 'Event Photo',
+                text: 'My photo from the event.'
+            });
         } else {
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
@@ -159,32 +189,58 @@ async function downloadImage(url, index) {
             link.click();
         }
     } catch (err) {
-        alert("Long-press image to save.");
+        alert("Download failed. Long-press image to save.");
     }
 }
 
 /**
- * ADMIN: Indexing
+ * ADMIN: Upload and index photos
  */
 async function uploadAndIndex() {
     const files = document.getElementById('photoInput').files;
     const status = document.getElementById('status');
+    
+    if (files.length === 0) return alert("Select files first.");
+
     for (let file of files) {
         status.innerText = `Indexing ${file.name}...`;
+        
         const img = await faceapi.bufferToImage(file);
-        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+                                       .withFaceLandmarks()
+                                       .withFaceDescriptor();
+        
         const descriptor = detection ? Array.from(detection.descriptor) : null;
+        
         const base64 = await new Promise(res => {
-            const r = new FileReader(); r.readAsDataURL(file); r.onload = () => res(r.result.split(',')[1]);
+            const r = new FileReader(); 
+            r.readAsDataURL(file); 
+            r.onload = () => res(r.result.split(',')[1]);
         });
-        await fetch(APP_URL, { method: "POST", body: JSON.stringify({ action: "upload", base64: base64, descriptor: descriptor, fileName: file.name, mimeType: file.type }) });
+
+        await fetch(APP_URL, {
+            method: "POST",
+            body: JSON.stringify({ 
+                action: "upload", 
+                base64: base64, 
+                descriptor: descriptor, 
+                fileName: file.name, 
+                mimeType: file.type 
+            })
+        });
     }
     status.innerText = "Indexing Complete.";
 }
 
+/**
+ * RESET: Clear local storage
+ */
 function clearIdentity() {
-    localStorage.removeItem('face_print');
-    location.reload();
+    if(confirm("Forget your face profile?")) {
+        localStorage.removeItem('face_print');
+        location.reload();
+    }
 }
 
+// Kick off the engine
 init();
