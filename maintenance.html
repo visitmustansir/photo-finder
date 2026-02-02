@@ -1,118 +1,63 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Photo Magic - Admin Maintenance</title>
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { background: #0f172a; color: white; font-family: sans-serif; }
-        .log-box { background: #1e293b; height: 350px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #334155; }
-    </style>
-</head>
-<body class="p-4 md:p-10 flex items-center justify-center min-h-screen">
-    <div class="max-w-2xl w-full bg-slate-800 p-8 rounded-[2rem] shadow-2xl border border-slate-700">
-        <h1 class="text-2xl font-bold mb-2 text-indigo-400">System Maintenance</h1>
-        <p class="text-slate-400 mb-6 text-sm">This tool scans your Google Drive and generates AI face prints for any images missing them.</p>
+async function runMaintenance() {
+    document.getElementById('start-btn').disabled = true;
+    addLog("Fetching file list...", "text-indigo-400");
 
-        <div class="mb-6 p-5 bg-indigo-900/20 rounded-2xl border border-indigo-500/20">
-            <div id="engine-status" class="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-3">Loading AI Models...</div>
-            <button id="start-btn" disabled onclick="runMaintenance()" class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 py-4 rounded-xl font-bold transition-all shadow-lg">
-                SCAN & REPAIR DATABASE
-            </button>
-        </div>
-
-        <div class="mb-4">
-            <div class="flex justify-between text-xs mb-2">
-                <span class="text-slate-400">Progress</span>
-                <span id="progress-percent" class="text-indigo-400 font-bold">0%</span>
-            </div>
-            <div class="w-full bg-slate-900 rounded-full h-3 p-1">
-                <div id="progress-bar" class="bg-indigo-500 h-1 rounded-full transition-all" style="width: 0%"></div>
-            </div>
-        </div>
-
-        <div id="log" class="log-box p-4 rounded-xl mt-4">
-            <div class="text-slate-500">> System Ready.</div>
-        </div>
-    </div>
-
-    <script>
-        const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhTIKaBQ7Pf4TQbcBh3rUq-1lg_JLm9cH7DmYA_Jh2njBFC/exec";
-        const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
-        const logBox = document.getElementById('log');
-
-        function addLog(msg, color = "text-slate-300") {
-            const div = document.createElement('div');
-            div.className = "mb-1 " + color;
-            div.innerText = `> ${msg}`;
-            logBox.appendChild(div);
-            logBox.scrollTop = logBox.scrollHeight;
-        }
-
-        async function init() {
-            try {
-                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-                document.getElementById('engine-status').innerText = "AI Engine Active";
-                document.getElementById('start-btn').disabled = false;
-                addLog("AI Models loaded. Ready to repair.");
-            } catch (e) {
-                addLog("Engine Error: " + e.message, "text-red-400");
+    try {
+        const res = await fetch(APP_URL, { method: "POST", body: JSON.stringify({ action: "list_files" }) });
+        let files = await res.json();
+        
+        // FIX: Ensure 'files' is an array. If it's an object containing the array, extract it.
+        if (!Array.isArray(files)) {
+            if (files.files && Array.isArray(files.files)) {
+                files = files.files;
+            } else {
+                throw new Error("Data received from Google is not a list.");
             }
         }
 
-        async function runMaintenance() {
-            document.getElementById('start-btn').disabled = true;
-            addLog("Fetching file list...", "text-indigo-400");
+        const broken = files.filter(f => !f.hasAI);
+        
+        if (broken.length === 0) {
+            addLog("Database is 100% indexed. Nothing to fix!", "text-emerald-400");
+            document.getElementById('start-btn').disabled = false;
+            return;
+        }
 
+        addLog(`Repairing ${broken.length} files. Keep this tab open...`, "text-yellow-400");
+
+        for (let i = 0; i < broken.length; i++) {
+            const file = broken[i];
             try {
-                const res = await fetch(APP_URL, { method: "POST", body: JSON.stringify({ action: "list_files" }) });
-                const files = await res.json();
-                const broken = files.filter(f => !f.hasAI);
+                // Using a proxy to bypass CORS issues when the AI "looks" at the Google Drive image
+                const imgUrl = "https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=2592000&url=" + encodeURIComponent("https://lh3.googleusercontent.com/d/" + file.id);
                 
-                if (broken.length === 0) {
-                    addLog("Database is 100% indexed. Nothing to fix!", "text-emerald-400");
-                    return;
+                const img = await faceapi.fetchImage(imgUrl);
+                const detect = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                
+                if (detect) {
+                    await fetch(APP_URL, { 
+                        method: "POST", 
+                        body: JSON.stringify({ 
+                            action: "update_metadata", 
+                            fileId: file.id, 
+                            descriptor: Array.from(detect.descriptor) 
+                        }) 
+                    });
+                    addLog(`Successfully indexed: ${file.id}`, "text-emerald-500");
+                } else {
+                    addLog(`No face found in: ${file.id}`, "text-slate-500");
                 }
-
-                addLog(`Repairing ${broken.length} files. Keep this tab open...`, "text-yellow-400");
-
-                for (let i = 0; i < broken.length; i++) {
-                    const file = broken[i];
-                    try {
-                        const imgUrl = "https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=2592000&url=" + encodeURIComponent("https://lh3.googleusercontent.com/d/" + file.id);
-                        const img = await faceapi.fetchImage(imgUrl);
-                        const detect = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-                        
-                        if (detect) {
-                            await fetch(APP_URL, { 
-                                method: "POST", 
-                                body: JSON.stringify({ 
-                                    action: "update_metadata", 
-                                    fileId: file.id, 
-                                    descriptor: Array.from(detect.descriptor) 
-                                }) 
-                            });
-                            addLog(`Successfully indexed: ${file.id}`, "text-emerald-500");
-                        } else {
-                            addLog(`No face found in: ${file.id}`, "text-slate-500");
-                        }
-                    } catch (e) {
-                        addLog(`Error on ${file.id}: ${e.message}`, "text-red-400");
-                    }
-                    
-                    const percent = Math.round(((i + 1) / broken.length) * 100);
-                    document.getElementById('progress-bar').style.width = percent + "%";
-                    document.getElementById('progress-percent').innerText = percent + "%";
-                }
-                addLog("COMPLETE: Your library is now searchable.", "text-emerald-400");
             } catch (e) {
-                addLog("Fatal Error: " + e.message, "text-red-500");
+                addLog(`Error on ${file.id}: ${e.message}`, "text-red-400");
             }
+            
+            const percent = Math.round(((i + 1) / broken.length) * 100);
+            document.getElementById('progress-bar').style.width = percent + "%";
+            document.getElementById('progress-percent').innerText = percent + "%";
         }
-        init();
-    </script>
-</body>
-</html>
+        addLog("COMPLETE: Your library is now searchable.", "text-emerald-400");
+    } catch (e) {
+        addLog("Fatal Error: " + e.message, "text-red-500");
+        document.getElementById('start-btn').disabled = false;
+    }
+}
