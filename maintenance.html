@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Photo Magic - Admin Maintenance</title>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #0f172a; color: white; font-family: sans-serif; }
+        .log-box { background: #1e293b; height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+    </style>
+</head>
+<body class="p-10">
+    <div class="max-w-2xl mx-auto bg-slate-800 p-8 rounded-3xl shadow-2xl border border-slate-700">
+        <h1 class="text-2xl font-bold mb-2">System Maintenance</h1>
+        <p class="text-slate-400 mb-6 text-sm">This tool scans your Google Drive and indexes faces for old images.</p>
+
+        <div id="setup-area" class="mb-6 p-4 bg-indigo-900/30 rounded-xl border border-indigo-500/30">
+            <p class="text-xs text-indigo-300 mb-2 font-bold">STATUS: <span id="engine-status">Loading AI Engine...</span></p>
+            <button id="start-btn" disabled onclick="runFullMaintenance()" class="w-full bg-indigo-600 disabled:bg-slate-700 py-3 rounded-xl font-bold transition-all">
+                START SCAN & REPAIR
+            </button>
+        </div>
+
+        <div class="mb-4">
+            <div class="flex justify-between text-xs mb-1">
+                <span>Progress</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="w-full bg-slate-700 rounded-full h-2">
+                <div id="progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div id="log" class="log-box p-4 rounded-xl border border-slate-700 mt-4">
+            <div>> System Ready. Waiting for command...</div>
+        </div>
+    </div>
+
+    <script>
+        const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhTIKaBQ7Pf4TQbcBh3rUq-1lg_JLm9cH7DmYA_Jh2njBFC/exec";
+        const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
+        const logBox = document.getElementById('log');
+
+        function addLog(msg, color = "text-slate-300") {
+            const div = document.createElement('div');
+            div.className = color;
+            div.innerText = `> ${msg}`;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        async function init() {
+            try {
+                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+                document.getElementById('engine-status').innerText = "AI ENGINE READY";
+                document.getElementById('start-btn').disabled = false;
+                addLog("AI Models loaded successfully.");
+            } catch (e) {
+                addLog("Error loading AI models: " + e.message, "text-red-400");
+            }
+        }
+
+        async function runFullMaintenance() {
+            document.getElementById('start-btn').disabled = true;
+            addLog("Requesting file list from Google Drive...", "text-indigo-400");
+
+            try {
+                const res = await fetch(APP_URL, { method: "POST", body: JSON.stringify({ action: "list_files" }) });
+                const files = await res.json();
+                
+                addLog(`Found ${files.length} total files. Checking for missing data...`);
+                
+                const broken = files.filter(f => !f.hasAI);
+                if (broken.length === 0) {
+                    addLog("All files are already indexed! No repair needed.", "text-emerald-400");
+                    return;
+                }
+
+                addLog(`Repairing ${broken.length} files. Please do not close this tab.`, "text-yellow-400");
+
+                for (let i = 0; i < broken.length; i++) {
+                    const file = broken[i];
+                    const progress = Math.round(((i + 1) / broken.length) * 100);
+                    
+                    try {
+                        // We use the direct image proxy to avoid CORS issues
+                        const imgUrl = "https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=2592000&url=" + encodeURIComponent("https://lh3.googleusercontent.com/d/" + file.id);
+                        
+                        const img = await faceapi.fetchImage(imgUrl);
+                        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                        
+                        if (detection) {
+                            await fetch(APP_URL, { 
+                                method: "POST", 
+                                body: JSON.stringify({ 
+                                    action: "update_metadata", 
+                                    fileId: file.id, 
+                                    descriptor: Array.from(detection.descriptor) 
+                                }) 
+                            });
+                            addLog(`Fixed: ${file.id}`, "text-emerald-500");
+                        } else {
+                            addLog(`No face detected in: ${file.id}`, "text-slate-500");
+                        }
+                    } catch (err) {
+                        addLog(`Failed to process ${file.id}: ${err.message}`, "text-red-400");
+                    }
+
+                    document.getElementById('progress-bar').style.width = progress + "%";
+                    document.getElementById('progress-percent').innerText = progress + "%";
+                }
+
+                addLog("MAINTENANCE COMPLETE!", "text-emerald-400");
+            } catch (e) {
+                addLog("Fatal error during maintenance: " + e.message, "text-red-500");
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
