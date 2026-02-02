@@ -7,41 +7,38 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Load AI models with detailed error reporting
+ * INIT: Load AI models from renamed .png manifest files
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
         console.log("Attempting to load models from:", MODEL_URL);
         
-        // Loading models one by one to catch the specific failure point
+        // Pointing specifically to the manifest files renamed to .png to bypass GitHub corruption
         statusLabel.innerText = "Loading Detector...";
-        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL, 'tiny_face_detector_model-weights_manifest.json.png');
         
         statusLabel.innerText = "Loading Landmarks...";
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL, 'face_landmark_68_model-weights_manifest.json.png');
         
         statusLabel.innerText = "Loading Recognizer...";
-        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL, 'face_recognition_model-weights_manifest.json.png');
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
         document.getElementById('loading-spinner').classList.add('hidden');
         checkUser();
     } catch (e) {
-        // Detailed Error Reporting
         console.error("AI Init Error Details:", e);
         
         let errorMsg = "MODEL ERROR: ";
         if (e.message && e.message.includes("404")) {
-            errorMsg += "File not found in /models/ folder.";
-        } else if (e.message && e.message.includes("Failed to fetch")) {
-            errorMsg += "GitHub blocked the file request (MIME/CORS).";
+            errorMsg += "File not found. Check if .png files are uploaded.";
         } else {
             errorMsg += e.message.substring(0, 50);
         }
         
         statusLabel.innerText = errorMsg;
-        statusLabel.style.color = "#ff4d4d"; // Highlight error in red
+        statusLabel.style.color = "#ff4d4d"; 
     }
 }
 
