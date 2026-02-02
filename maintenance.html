@@ -7,33 +7,33 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background: #0f172a; color: white; font-family: sans-serif; }
-        .log-box { background: #1e293b; height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+        .log-box { background: #1e293b; height: 350px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #334155; }
     </style>
 </head>
-<body class="p-10">
-    <div class="max-w-2xl mx-auto bg-slate-800 p-8 rounded-3xl shadow-2xl border border-slate-700">
-        <h1 class="text-2xl font-bold mb-2">System Maintenance</h1>
-        <p class="text-slate-400 mb-6 text-sm">This tool scans your Google Drive and indexes faces for old images.</p>
+<body class="p-4 md:p-10 flex items-center justify-center min-h-screen">
+    <div class="max-w-2xl w-full bg-slate-800 p-8 rounded-[2rem] shadow-2xl border border-slate-700">
+        <h1 class="text-2xl font-bold mb-2 text-indigo-400">System Maintenance</h1>
+        <p class="text-slate-400 mb-6 text-sm">This tool scans your Google Drive and generates AI face prints for any images missing them.</p>
 
-        <div id="setup-area" class="mb-6 p-4 bg-indigo-900/30 rounded-xl border border-indigo-500/30">
-            <p class="text-xs text-indigo-300 mb-2 font-bold">STATUS: <span id="engine-status">Loading AI Engine...</span></p>
-            <button id="start-btn" disabled onclick="runFullMaintenance()" class="w-full bg-indigo-600 disabled:bg-slate-700 py-3 rounded-xl font-bold transition-all">
-                START SCAN & REPAIR
+        <div class="mb-6 p-5 bg-indigo-900/20 rounded-2xl border border-indigo-500/20">
+            <div id="engine-status" class="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-3">Loading AI Models...</div>
+            <button id="start-btn" disabled onclick="runMaintenance()" class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 py-4 rounded-xl font-bold transition-all shadow-lg">
+                SCAN & REPAIR DATABASE
             </button>
         </div>
 
         <div class="mb-4">
-            <div class="flex justify-between text-xs mb-1">
-                <span>Progress</span>
-                <span id="progress-percent">0%</span>
+            <div class="flex justify-between text-xs mb-2">
+                <span class="text-slate-400">Progress</span>
+                <span id="progress-percent" class="text-indigo-400 font-bold">0%</span>
             </div>
-            <div class="w-full bg-slate-700 rounded-full h-2">
-                <div id="progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+            <div class="w-full bg-slate-900 rounded-full h-3 p-1">
+                <div id="progress-bar" class="bg-indigo-500 h-1 rounded-full transition-all" style="width: 0%"></div>
             </div>
         </div>
 
-        <div id="log" class="log-box p-4 rounded-xl border border-slate-700 mt-4">
-            <div>> System Ready. Waiting for command...</div>
+        <div id="log" class="log-box p-4 rounded-xl mt-4">
+            <div class="text-slate-500">> System Ready.</div>
         </div>
     </div>
 
@@ -44,7 +44,7 @@
 
         function addLog(msg, color = "text-slate-300") {
             const div = document.createElement('div');
-            div.className = color;
+            div.className = "mb-1 " + color;
             div.innerText = `> ${msg}`;
             logBox.appendChild(div);
             logBox.scrollTop = logBox.scrollHeight;
@@ -55,70 +55,63 @@
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
                 await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-                document.getElementById('engine-status').innerText = "AI ENGINE READY";
+                document.getElementById('engine-status').innerText = "AI Engine Active";
                 document.getElementById('start-btn').disabled = false;
-                addLog("AI Models loaded successfully.");
+                addLog("AI Models loaded. Ready to repair.");
             } catch (e) {
-                addLog("Error loading AI models: " + e.message, "text-red-400");
+                addLog("Engine Error: " + e.message, "text-red-400");
             }
         }
 
-        async function runFullMaintenance() {
+        async function runMaintenance() {
             document.getElementById('start-btn').disabled = true;
-            addLog("Requesting file list from Google Drive...", "text-indigo-400");
+            addLog("Fetching file list...", "text-indigo-400");
 
             try {
                 const res = await fetch(APP_URL, { method: "POST", body: JSON.stringify({ action: "list_files" }) });
                 const files = await res.json();
-                
-                addLog(`Found ${files.length} total files. Checking for missing data...`);
-                
                 const broken = files.filter(f => !f.hasAI);
+                
                 if (broken.length === 0) {
-                    addLog("All files are already indexed! No repair needed.", "text-emerald-400");
+                    addLog("Database is 100% indexed. Nothing to fix!", "text-emerald-400");
                     return;
                 }
 
-                addLog(`Repairing ${broken.length} files. Please do not close this tab.`, "text-yellow-400");
+                addLog(`Repairing ${broken.length} files. Keep this tab open...`, "text-yellow-400");
 
                 for (let i = 0; i < broken.length; i++) {
                     const file = broken[i];
-                    const progress = Math.round(((i + 1) / broken.length) * 100);
-                    
                     try {
-                        // We use the direct image proxy to avoid CORS issues
                         const imgUrl = "https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=2592000&url=" + encodeURIComponent("https://lh3.googleusercontent.com/d/" + file.id);
-                        
                         const img = await faceapi.fetchImage(imgUrl);
-                        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                        const detect = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
                         
-                        if (detection) {
+                        if (detect) {
                             await fetch(APP_URL, { 
                                 method: "POST", 
                                 body: JSON.stringify({ 
                                     action: "update_metadata", 
                                     fileId: file.id, 
-                                    descriptor: Array.from(detection.descriptor) 
+                                    descriptor: Array.from(detect.descriptor) 
                                 }) 
                             });
-                            addLog(`Fixed: ${file.id}`, "text-emerald-500");
+                            addLog(`Successfully indexed: ${file.id}`, "text-emerald-500");
                         } else {
-                            addLog(`No face detected in: ${file.id}`, "text-slate-500");
+                            addLog(`No face found in: ${file.id}`, "text-slate-500");
                         }
-                    } catch (err) {
-                        addLog(`Failed to process ${file.id}: ${err.message}`, "text-red-400");
+                    } catch (e) {
+                        addLog(`Error on ${file.id}: ${e.message}`, "text-red-400");
                     }
-
-                    document.getElementById('progress-bar').style.width = progress + "%";
-                    document.getElementById('progress-percent').innerText = progress + "%";
+                    
+                    const percent = Math.round(((i + 1) / broken.length) * 100);
+                    document.getElementById('progress-bar').style.width = percent + "%";
+                    document.getElementById('progress-percent').innerText = percent + "%";
                 }
-
-                addLog("MAINTENANCE COMPLETE!", "text-emerald-400");
+                addLog("COMPLETE: Your library is now searchable.", "text-emerald-400");
             } catch (e) {
-                addLog("Fatal error during maintenance: " + e.message, "text-red-500");
+                addLog("Fatal Error: " + e.message, "text-red-500");
             }
         }
-
         init();
     </script>
 </body>
