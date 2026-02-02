@@ -1,5 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (FINAL STABLE VERSION)
+ * AI EVENT FINDER - CORE LOGIC (MANUAL DATA INJECTION)
+ * This version bypasses the library's internal URL correction.
  */
 
 // 1. CONFIGURATION
@@ -7,25 +8,44 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Load AI models
+ * INIT: Bypasses library URL logic by fetching manually
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP ---");
-        statusLabel.innerText = "Initializing AI Engine...";
+        console.log("--- AI SYSTEM STARTUP (INJECTION MODE) ---");
+        statusLabel.innerText = "Connecting to models...";
 
-        // Pointing to .json.png manifests. The library will look for 
-        // the shards (without .png) in the same folder automatically.
-        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL, 'tiny_face_detector_model-weights_manifest.json.png');
+        /**
+         * The Fix: We fetch the .json.png as text, parse it to an object,
+         * and then tell the library to load using that object.
+         */
+        const loadManual = async (net, manifestName) => {
+            const url = MODEL_URL + manifestName;
+            console.log("Fetching Manifest:", url);
+            
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Status ${response.status} for ${manifestName}`);
+            
+            const manifest = await response.json();
+            
+            // We pass the parsed object and the base URL for the shards
+            await net.loadFromUri(MODEL_URL, manifest);
+        };
+
+        // 1. Load Detector
+        statusLabel.innerText = "Loading Detector...";
+        await loadManual(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
         
+        // 2. Load Landmarks
         statusLabel.innerText = "Loading Landmarks...";
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL, 'face_landmark_68_model-weights_manifest.json.png');
+        await loadManual(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
         console.log("✅ Landmarks Loaded");
         
+        // 3. Load Recognition
         statusLabel.innerText = "Loading Recognizer...";
-        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL, 'face_recognition_model-weights_manifest.json.png');
+        await loadManual(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
         console.log("✅ Recognizer Loaded");
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
@@ -34,7 +54,7 @@ async function init() {
         
     } catch (e) {
         console.error("AI FATAL ERROR:", e);
-        statusLabel.innerText = "LOAD FAILED: Check Shard Filenames";
+        statusLabel.innerText = "LOAD FAILED: " + e.message.substring(0, 45);
         statusLabel.style.color = "#ff4d4d"; 
     }
 }
@@ -111,7 +131,7 @@ async function performSearch(vector) {
     const resultsArea = document.getElementById('results-area');
     const gallery = document.getElementById('gallery');
     resultsArea.classList.remove('hidden');
-    status.innerText = "Searching database...";
+    status.innerText = "Searching...";
     gallery.innerHTML = "";
 
     try {
@@ -120,7 +140,7 @@ async function performSearch(vector) {
             body: JSON.stringify({ action: "search", descriptor: vector })
         });
         const matches = await res.json();
-        status.innerText = matches.length > 0 ? `Found ${matches.length} photos` : "No matches found.";
+        status.innerText = matches.length > 0 ? `Found ${matches.length} photos` : "No photos found.";
 
         matches.forEach((url, index) => {
             const directUrl = url.replace('file/d/', 'uc?export=download&id=').replace('/view?usp=sharing', '');
@@ -138,13 +158,14 @@ async function performSearch(vector) {
 }
 
 /**
- * SAVE IMAGE
+ * NATIVE SAVE
  */
 async function downloadImage(url, index) {
     try {
         const response = await fetch(url);
         const blob = await response.blob();
         const file = new File([blob], `photo_${index}.jpg`, { type: "image/jpeg" });
+
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({ files: [file], title: 'Event Photo' });
         } else {
@@ -159,7 +180,7 @@ async function downloadImage(url, index) {
 }
 
 /**
- * ADMIN INDEXING
+ * ADMIN: Indexing
  */
 async function uploadAndIndex() {
     const files = document.getElementById('photoInput').files;
@@ -177,14 +198,9 @@ async function uploadAndIndex() {
     status.innerText = "Indexing Complete.";
 }
 
-/**
- * CLEAR STORAGE
- */
 function clearIdentity() {
-    if(confirm("Forget your face profile?")) {
-        localStorage.removeItem('face_print');
-        location.reload();
-    }
+    localStorage.removeItem('face_print');
+    location.reload();
 }
 
 init();
