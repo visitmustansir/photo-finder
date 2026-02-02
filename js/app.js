@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (VIRTUAL URI REDIRECTION)
- * Provides a dummy URI to satisfy validation while the fetcher handles the data.
+ * AI EVENT FINDER - CORE LOGIC (WEIGHT INJECTION VERSION)
+ * Bypasses the library's network layer entirely by manually loading weights.
  */
 
 // 1. CONFIGURATION
@@ -8,60 +8,51 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Bypasses library URL logic by providing a custom virtual fetcher
+ * INIT: Bypasses library URL logic by manually injecting weights
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (VIRTUAL REDIRECTION) ---");
+        console.log("--- AI SYSTEM STARTUP (WEIGHT INJECTION) ---");
         statusLabel.innerText = "Connecting to models...";
 
         /**
-         * The Strategy:
-         * We give the library a "Fake" URL to satisfy its 'expected model uri' check.
-         * Our fetcher ignores the Fake URL and pulls from the real MODEL_URL.
+         * The Fix: 
+         * Instead of using net.load(), we manually fetch the .json.png
+         * and then tell the network to load those specific weights.
          */
-        const loadNeuralNet = async (net, manifestName) => {
-            // 1. Pre-fetch the actual manifest data from GitHub (.json.png)
+        const injectWeights = async (net, manifestName) => {
+            // 1. Get the manifest
             const mRes = await fetch(MODEL_URL + manifestName);
             if (!mRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
             const manifestData = await mRes.json();
 
-            // 2. Custom fetcher that ignores the library's "guessed" URLs
-            const shardFetcher = async (url) => {
-                // If the library asks for something ending in .json, give it our manifest
-                if (url.endsWith('.json')) {
-                    return new Response(JSON.stringify(manifestData));
-                }
-                
-                // Otherwise, it's asking for a shard.
-                // Extract just the filename (e.g., 'tiny_face_detector_model-shard1')
-                const fileName = url.split('/').pop();
-                const realShardUrl = MODEL_URL + fileName;
-                
-                console.log("Redirecting shard request to:", realShardUrl);
-                return fetch(realShardUrl);
+            // 2. Define our own fetcher for shards
+            const fetchWeights = async (uri) => {
+                // Ensure we get just the filename from the manifest paths
+                const fileName = uri.split('/').pop();
+                const shardUrl = MODEL_URL + fileName;
+                console.log("Manual Weight Fetch:", shardUrl);
+                const res = await fetch(shardUrl);
+                return res;
             };
 
-            /**
-             * 3. THE FIX: 
-             * We pass 'MODEL_URL' as a string to satisfy the library's "expected URI" check.
-             * We pass 'shardFetcher' to handle the actual data loading.
-             */
-            await net.load(MODEL_URL, shardFetcher);
+            // 3. Use the internal 'load' with the manifest object and our fetcher
+            // This is the direct internal API call that bypasses URL guessing
+            await net.load(manifestData, fetchWeights);
         };
 
-        // Load all 3 networks
+        // Load all 3 networks manually
         statusLabel.innerText = "Loading Detector...";
-        await loadNeuralNet(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
+        await injectWeights(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
         
         statusLabel.innerText = "Loading Landmarks...";
-        await loadNeuralNet(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
+        await injectWeights(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
         console.log("✅ Landmarks Loaded");
         
         statusLabel.innerText = "Loading Recognizer...";
-        await loadNeuralNet(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
+        await injectWeights(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
         console.log("✅ Recognizer Loaded");
         
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
@@ -174,7 +165,7 @@ async function performSearch(vector) {
 }
 
 /**
- * NATIVE SAVE
+ * SAVE IMAGE
  */
 async function downloadImage(url, index) {
     try {
@@ -195,7 +186,7 @@ async function downloadImage(url, index) {
 }
 
 /**
- * ADMIN: Indexing
+ * ADMIN INDEXING
  */
 async function uploadAndIndex() {
     const files = document.getElementById('photoInput').files;
