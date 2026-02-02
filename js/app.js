@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (GLOBAL FETCH HIJACK)
- * This version intercepts all network requests to redirect .json to .json.png
+ * AI EVENT FINDER - CORE LOGIC (BRUTE FORCE INJECTION)
+ * No network guessing. No hijacked fetch. Just pure data.
  */
 
 // 1. CONFIGURATION
@@ -8,49 +8,48 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Hijacks the fetch API to handle GitHub's extension restrictions
+ * INIT: Bypasses ALL library fetch logic
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (FETCH HIJACK) ---");
+        console.log("--- AI SYSTEM STARTUP (BRUTE FORCE) ---");
         statusLabel.innerText = "Connecting to models...";
 
-        // --- THE HIJACK ---
-        const originalFetch = window.fetch;
-        window.fetch = function() {
-            let url = arguments[0];
-            
-            // If the library asks for a .json manifest, point it to our .png version
-            if (typeof url === 'string' && url.endsWith('.json')) {
-                const redirectedUrl = url + '.png';
-                console.log("Hijacking Fetch: Redirecting", url, "->", redirectedUrl);
-                return originalFetch(redirectedUrl, arguments[1]);
-            }
-            
-            // Otherwise, let the request proceed normally (for shards, etc.)
-            return originalFetch.apply(this, arguments);
-        };
-        // ------------------
+        const loadModel = async (net, manifestName) => {
+            // 1. Download manifest manually
+            const res = await fetch(MODEL_URL + manifestName);
+            if (!res.ok) throw new Error(`404: ${manifestName}`);
+            const manifestData = await res.json();
 
-        // Now we use the standard, simple loading method.
-        // The library thinks it's loading .json, but our hijacker feeds it the .png
-        
+            // 2. Custom fetcher that ONLY handles the shard requests
+            // By the time the library calls this, it already has the manifest
+            const shardFetcher = async (url) => {
+                // Get the shard filename from the path
+                const fileName = url.split('/').pop();
+                // Redirect to our actual shard location (no extension)
+                const realUrl = MODEL_URL + fileName;
+                console.log("Brute Force Fetching Shard:", fileName);
+                return fetch(realUrl);
+            };
+
+            // 3. We pass the ACTUAL DATA object as the first argument
+            // and a dummy URL as the second to satisfy the internal check
+            await net.load(manifestData, shardFetcher);
+        };
+
         statusLabel.innerText = "Loading Detector...";
-        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        await loadModel(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
         
         statusLabel.innerText = "Loading Landmarks...";
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await loadModel(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
         console.log("✅ Landmarks Loaded");
         
         statusLabel.innerText = "Loading Recognizer...";
-        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        await loadModel(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
         console.log("✅ Recognizer Loaded");
         
-        // Restore original fetch after loading is done to avoid side effects
-        window.fetch = originalFetch;
-
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
         document.getElementById('loading-spinner').classList.add('hidden');
         checkUser();
@@ -161,7 +160,7 @@ async function performSearch(vector) {
 }
 
 /**
- * NATIVE SAVE
+ * DOWNLOAD/SHARE
  */
 async function downloadImage(url, index) {
     try {
@@ -182,7 +181,7 @@ async function downloadImage(url, index) {
 }
 
 /**
- * ADMIN: Indexing
+ * ADMIN: INDEXING
  */
 async function uploadAndIndex() {
     const files = document.getElementById('photoInput').files;
