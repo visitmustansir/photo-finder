@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (TOTAL CONTROL VERSION)
- * Passes a pre-parsed object to the AI to prevent 404 URL guessing.
+ * AI EVENT FINDER - CORE LOGIC (VIRTUAL URI REDIRECTION)
+ * Provides a dummy URI to satisfy validation while the fetcher handles the data.
  */
 
 // 1. CONFIGURATION
@@ -8,43 +8,50 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Loads models by injecting the JSON data directly
+ * INIT: Bypasses library URL logic by providing a custom virtual fetcher
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (OBJECT INJECTION) ---");
+        console.log("--- AI SYSTEM STARTUP (VIRTUAL REDIRECTION) ---");
         statusLabel.innerText = "Connecting to models...";
 
         /**
-         * The Fix: 
-         * 1. We fetch the .json.png manifest ourselves.
-         * 2. We pass that DATA (the object) to the library.
-         * 3. We use a fetcher ONLY for the binary shards.
+         * The Strategy:
+         * We give the library a "Fake" URL to satisfy its 'expected model uri' check.
+         * Our fetcher ignores the Fake URL and pulls from the real MODEL_URL.
          */
         const loadNeuralNet = async (net, manifestName) => {
-            // 1. Fetch manifest as text/json
+            // 1. Pre-fetch the actual manifest data from GitHub (.json.png)
             const mRes = await fetch(MODEL_URL + manifestName);
             if (!mRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
             const manifestData = await mRes.json();
 
-            // 2. Define a fetcher that only handles shard requests
+            // 2. Custom fetcher that ignores the library's "guessed" URLs
             const shardFetcher = async (url) => {
-                const fileName = url.split('/').pop();
-                // Ensure we don't accidentally try to fetch a .json file here
-                if (fileName.endsWith('.json')) {
+                // If the library asks for something ending in .json, give it our manifest
+                if (url.endsWith('.json')) {
                     return new Response(JSON.stringify(manifestData));
                 }
-                console.log("Fetching binary shard:", fileName);
-                return fetch(MODEL_URL + fileName);
+                
+                // Otherwise, it's asking for a shard.
+                // Extract just the filename (e.g., 'tiny_face_detector_model-shard1')
+                const fileName = url.split('/').pop();
+                const realShardUrl = MODEL_URL + fileName;
+                
+                console.log("Redirecting shard request to:", realShardUrl);
+                return fetch(realShardUrl);
             };
 
-            // 3. IMPORTANT: Passing the OBJECT (manifestData) 
-            // This prevents the library from trying to fetch a .json URL
-            await net.load(manifestData, shardFetcher);
+            /**
+             * 3. THE FIX: 
+             * We pass 'MODEL_URL' as a string to satisfy the library's "expected URI" check.
+             * We pass 'shardFetcher' to handle the actual data loading.
+             */
+            await net.load(MODEL_URL, shardFetcher);
         };
 
-        // Load networks
+        // Load all 3 networks
         statusLabel.innerText = "Loading Detector...";
         await loadNeuralNet(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
         console.log("✅ Detector Loaded");
@@ -140,7 +147,7 @@ async function performSearch(vector) {
     const resultsArea = document.getElementById('results-area');
     const gallery = document.getElementById('gallery');
     resultsArea.classList.remove('hidden');
-    status.innerText = "Searching database...";
+    status.innerText = "Searching...";
     gallery.innerHTML = "";
 
     try {
@@ -167,7 +174,7 @@ async function performSearch(vector) {
 }
 
 /**
- * SAVE IMAGE
+ * NATIVE SAVE
  */
 async function downloadImage(url, index) {
     try {
@@ -188,7 +195,7 @@ async function downloadImage(url, index) {
 }
 
 /**
- * ADMIN INDEXING
+ * ADMIN: Indexing
  */
 async function uploadAndIndex() {
     const files = document.getElementById('photoInput').files;
@@ -207,7 +214,7 @@ async function uploadAndIndex() {
 }
 
 function clearIdentity() {
-    if(confirm("Forget your face profile?")) {
+    if(confirm("Forget face profile?")) {
         localStorage.removeItem('face_print');
         location.reload();
     }
