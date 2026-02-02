@@ -1,6 +1,6 @@
 /**
- * AI EVENT FINDER - CORE LOGIC (RAW ENGINE INJECTION)
- * Bypasses high-level validation by talking directly to the NN classes.
+ * AI EVENT FINDER - CORE LOGIC (GLOBAL FETCH HIJACK)
+ * This version intercepts all network requests to redirect .json to .json.png
  */
 
 // 1. CONFIGURATION
@@ -8,51 +8,49 @@ const APP_URL = "https://script.google.com/macros/s/AKfycbz6r6S3clU5VWg5gAtaRlhT
 const MODEL_URL = 'https://visitmustansir.github.io/photo-finder/models/'; 
 
 /**
- * INIT: Bypasses library URL logic by manually injecting weights into Raw Classes
+ * INIT: Hijacks the fetch API to handle GitHub's extension restrictions
  */
 async function init() {
     const statusLabel = document.getElementById('model-status');
     try {
-        console.log("--- AI SYSTEM STARTUP (RAW ENGINE) ---");
+        console.log("--- AI SYSTEM STARTUP (FETCH HIJACK) ---");
         statusLabel.innerText = "Connecting to models...";
 
-        /**
-         * The Ultimate Fix:
-         * Instead of net.loadFromUri, we use the raw internal load method
-         * which accepts (manifest, fetcher) without requiring a dummy string.
-         */
-        const loadRaw = async (net, manifestName) => {
-            // 1. Fetch manifest
-            const mRes = await fetch(MODEL_URL + manifestName);
-            if (!mRes.ok) throw new Error(`Manifest 404: ${manifestName}`);
-            const manifestData = await mRes.json();
-
-            // 2. Fetcher for shards
-            const shardFetcher = async (uri) => {
-                const fileName = uri.split('/').pop();
-                const shardUrl = MODEL_URL + fileName;
-                console.log("Loading raw shard:", fileName);
-                return fetch(shardUrl);
-            };
-
-            // 3. Directly calling the internal weight loader
-            // This is the most "naked" way to load weights in face-api.js
-            await net.load(manifestData, shardFetcher);
+        // --- THE HIJACK ---
+        const originalFetch = window.fetch;
+        window.fetch = function() {
+            let url = arguments[0];
+            
+            // If the library asks for a .json manifest, point it to our .png version
+            if (typeof url === 'string' && url.endsWith('.json')) {
+                const redirectedUrl = url + '.png';
+                console.log("Hijacking Fetch: Redirecting", url, "->", redirectedUrl);
+                return originalFetch(redirectedUrl, arguments[1]);
+            }
+            
+            // Otherwise, let the request proceed normally (for shards, etc.)
+            return originalFetch.apply(this, arguments);
         };
+        // ------------------
 
-        // Load all 3 networks using the raw loader
+        // Now we use the standard, simple loading method.
+        // The library thinks it's loading .json, but our hijacker feeds it the .png
+        
         statusLabel.innerText = "Loading Detector...";
-        await loadRaw(faceapi.nets.tinyFaceDetector, 'tiny_face_detector_model-weights_manifest.json.png');
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
         console.log("✅ Detector Loaded");
         
         statusLabel.innerText = "Loading Landmarks...";
-        await loadRaw(faceapi.nets.faceLandmark68Net, 'face_landmark_68_model-weights_manifest.json.png');
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         console.log("✅ Landmarks Loaded");
         
         statusLabel.innerText = "Loading Recognizer...";
-        await loadRaw(faceapi.nets.faceRecognitionNet, 'face_recognition_model-weights_manifest.json.png');
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
         console.log("✅ Recognizer Loaded");
         
+        // Restore original fetch after loading is done to avoid side effects
+        window.fetch = originalFetch;
+
         statusLabel.innerText = "AI LOCAL ENGINE ACTIVE";
         document.getElementById('loading-spinner').classList.add('hidden');
         checkUser();
@@ -125,7 +123,7 @@ async function capture() {
  */
 async function autoSearch() {
     const vector = JSON.parse(localStorage.getItem('face_print'));
-    performSearch(vector);
+    if (vector) performSearch(vector);
 }
 
 /**
@@ -163,7 +161,7 @@ async function performSearch(vector) {
 }
 
 /**
- * SAVE IMAGE
+ * NATIVE SAVE
  */
 async function downloadImage(url, index) {
     try {
@@ -184,7 +182,7 @@ async function downloadImage(url, index) {
 }
 
 /**
- * ADMIN INDEXING
+ * ADMIN: Indexing
  */
 async function uploadAndIndex() {
     const files = document.getElementById('photoInput').files;
